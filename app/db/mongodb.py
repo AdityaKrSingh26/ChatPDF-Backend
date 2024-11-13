@@ -1,7 +1,8 @@
-# app/db/mongodb.py
 from motor.motor_asyncio import AsyncIOMotorClient
 from ..config import settings
-from bson import ObjectId
+import cloudinary
+import cloudinary.uploader
+import logging
 
 class MongoDB:
     client = None
@@ -9,26 +10,69 @@ class MongoDB:
 
     @classmethod
     async def connect_db(cls):
-        cls.client = AsyncIOMotorClient(settings.MONGODB_URL)
-        cls.db = cls.client[settings.DB_NAME]
-        # Create indexes for better query performance
-        await cls.db.pdfs.create_index("created_at")
-        await cls.db.queries.create_index("created_at")
-        
+        try:
+            # Step 1: Connect to MongoDB
+            print("Step 1: Connecting to MongoDB...")
+            cls.client = AsyncIOMotorClient(settings.MONGODB_URL)
+            cls.db = cls.client[settings.DB_NAME]
+            await cls.db.pdfs.create_index("created_at")
+            await cls.db.queries.create_index("created_at")
+            print("MongoDB connected successfully!")
+
+            # Step 2: Connect to Cloudinary
+            print("Step 2: Connecting to Cloudinary...")
+            cloudinary.config(
+                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                api_key=settings.CLOUDINARY_API_KEY,
+                api_secret=settings.CLOUDINARY_API_SECRET
+            )
+            print("Cloudinary connected successfully!")
+
+        except Exception as e:
+            print(f"Error connecting to MongoDB or Cloudinary: {str(e)}")
+            logging.error(f"Error connecting to MongoDB or Cloudinary: {str(e)}")
+            raise Exception("Database or Cloudinary connection failed")
+
     @classmethod
     async def close_db(cls):
         if cls.client:
-            await cls.client.close()
+            try:
+                # Close MongoDB connection
+                await cls.client.close()
+                print("MongoDB connection closed successfully")
+            except Exception as e:
+                print(f"Error closing MongoDB connection: {e}")
+                logging.error(f"Error closing MongoDB connection: {str(e)}")
+        else:
+            print("MongoDB client is not initialized. No connection to close.")
             
     @classmethod
     async def save_pdf_metadata(cls, filename: str, cloudinary_data: dict):
-        pdf_doc = {
-            "filename": filename,
-            "cloudinary_url": cloudinary_data['secure_url'],
-            "cloudinary_public_id": cloudinary_data['public_id'],
-            "file_size": cloudinary_data['bytes'],
-            "created_at": cloudinary_data['created_at'],
-            "format": cloudinary_data['format']
-        }
-        result = await cls.db.pdfs.insert_one(pdf_doc)
-        return str(result.inserted_id)
+        try:
+            # Debugging log
+            logger = logging.getLogger(__name__)
+            logger.info(f"Saving metadata to MongoDB: {cloudinary_data}")
+            
+            # Create PDF document with correct field mapping
+            pdf_doc = {
+                "filename": filename,
+                "cloudinary_url": cloudinary_data['cloudinary_url'],
+                "cloudinary_public_id": cloudinary_data['cloudinary_public_id'],
+                "file_size": cloudinary_data['file_size'],  # This matches the incoming data
+                "created_at": cloudinary_data['created_at'],
+                "format": cloudinary_data['format']
+            }
+            
+            # Log the document to be inserted
+            logger.info(f"PDF document to be inserted: {pdf_doc}")
+            
+            # Insert document into MongoDB
+            result = await cls.db.pdfs.insert_one(pdf_doc)
+            return str(result.inserted_id)
+            
+        except KeyError as ke:
+            logger.error(f"Missing required field in cloudinary_data: {ke}")
+            raise Exception(f"Missing required field in metadata: {ke}")
+        except Exception as e:
+            logger.error(f"Error saving PDF metadata: {str(e)}")
+            raise Exception(f"Error saving PDF metadata to MongoDB: {str(e)}")

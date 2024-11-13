@@ -8,11 +8,11 @@ from .api.endpoints import pdf
 app = FastAPI(title="PDF Query System")
 
 # Register routes
-app.include_router(pdf.router, prefix="/api/v1", tags=["pdf"])
-
 @app.get("/")
 async def root():
     return {"message": "Welcome to the PDF Query System API!"}
+
+app.include_router(pdf.router, prefix="/api/v1", tags=["pdf"])
 
 @app.on_event("startup")
 async def startup_db_client():
