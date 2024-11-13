@@ -25,7 +25,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             print("Uploading file to Cloudinary...")
             upload_result = cloudinary.uploader.upload(
                 file.file,
-                resource_type="auto"
+                resource_type="raw"
             )
             print(f"File uploaded successfully. Cloudinary URL: {upload_result['secure_url']}")
         except Exception as upload_error:
