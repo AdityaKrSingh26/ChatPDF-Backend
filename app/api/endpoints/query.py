@@ -6,6 +6,7 @@ from ...utils.pdf_processor import pdf_processor
 import cloudinary.api
 from datetime import datetime
 from bson import ObjectId
+from typing import List
 
 router = APIRouter()
 
