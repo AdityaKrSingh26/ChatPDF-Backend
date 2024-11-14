@@ -1,19 +1,20 @@
 # app/utils/pdf_processor.py
-from typing import List, Dict
+from typing import List
 import PyPDF2
 import io
-import openai
-from ..config import settings
-import tiktoken
-from typing import List, Dict
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import SentenceTransformer
+import google.generativeai as genai
+from ..config import settings
 
 class PDFProcessor:
     def __init__(self):
-        openai.api_key = settings.OPENAI_API_KEY
-        self.encoding = tiktoken.get_encoding("cl100k_base")
+        # Initialize sentence-transformers model for embeddings
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        # Initialize Gemini
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self.model = genai.GenerativeModel('gemini-pro')
         self.chunk_size = 1000
         self.chunk_overlap = 200
         
@@ -41,13 +42,10 @@ class PDFProcessor:
         return chunks
 
     async def get_embeddings(self, text: str) -> List[float]:
-        """Get embeddings for text using OpenAI's API"""
+        """Get embeddings using sentence-transformers"""
         try:
-            response = await openai.embeddings.create(
-                model="text-embedding-ada-002",
-                input=text
-            )
-            return response.data[0].embedding
+            embedding = self.embedding_model.encode(text)
+            return embedding.tolist()
         except Exception as e:
             raise Exception(f"Error getting embeddings: {str(e)}")
 
@@ -80,31 +78,31 @@ class PDFProcessor:
             raise Exception(f"Error finding relevant chunks: {str(e)}")
 
     async def generate_response(self, query: str, relevant_chunks: List[str]) -> str:
-        """Generate response using OpenAI's API"""
+        """Generate response using Gemini Pro"""
         try:
             # Combine relevant chunks
             context = "\n".join(relevant_chunks)
             
             # Create prompt
-            prompt = f"""Given the following context from a PDF document:
+            prompt = f"""You are a helpful assistant that answers questions based on provided PDF content.
             
-            {context}
+Context from PDF:
+{context}
+
+Question: {query}
+
+Instructions:
+1. Answer based ONLY on the provided context
+2. If the answer isn't in the context, say "I cannot answer this based on the provided content"
+3. Be concise but thorough
+4. If relevant, cite specific parts of the context
+
+Answer:"""
             
-            Please answer the following question:
-            {query}
+            # Generate response using Gemini
+            response = self.model.generate_content(prompt)
             
-            If the answer cannot be found in the context, please indicate that."""
-            
-            # Get response from OpenAI
-            response = await openai.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided PDF content."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            return response.choices[0].message.content
+            return response.text
             
         except Exception as e:
             raise Exception(f"Error generating response: {str(e)}")

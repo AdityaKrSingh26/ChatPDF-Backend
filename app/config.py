@@ -2,16 +2,20 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # MongoDB Atlas Connection
+    # MongoDB Settings
     MONGODB_URL: str
     DB_NAME: str = "pdf_query_system"
     
-    # Cloudinary
+    # Cloudinary Settings
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
     
-    # OpenAI
+    # Gemini Settings
+    GEMINI_API_KEY: str
+
+    # OpenAI API Key (add this if you need it)
+    # not required
     OPENAI_API_KEY: str
 
     class Config:
