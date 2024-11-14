@@ -126,8 +126,6 @@ async def delete_pdf(pdf_id: str):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid PDF ID format"
             )
-        else:
-            print(f"Deleting PDF {pdf_id}")
 
         # Step 2: Get PDF metadata from MongoDB
         pdf = await MongoDB.db.pdfs.find_one({"_id": ObjectId(pdf_id)})
@@ -136,26 +134,20 @@ async def delete_pdf(pdf_id: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="PDF not found"
             )
-        else:
-            print(f"PDF found: {pdf}")
             
         # Step 3: Delete from Cloudinary
         cloudinary_result = cloudinary.uploader.destroy(pdf['cloudinary_public_id'])
         if cloudinary_result.get('result') == 'not found':
             print(f"PDF already deleted from Cloudinary or not found: {cloudinary_result}")
-            raise Exception("Failed to delete from Cloudinary")
         elif cloudinary_result.get('result') != 'ok':
             print(f"Failed to delete from Cloudinary: {cloudinary_result}")
             raise Exception("Failed to delete from Cloudinary")
-        else:
-            print(f"Deleted from Cloudinary: {cloudinary_result}")
+
 
         # Step 4: Delete from MongoDB
         result = await MongoDB.db.pdfs.delete_one({"_id": ObjectId(pdf_id)})
         if result.deleted_count == 0:
             raise Exception("Failed to delete from MongoDB")
-        else:
-            print(f"Deleted from MongoDB: {result.raw_result}")
         
         return {
             "status": "success",
@@ -167,7 +159,7 @@ async def delete_pdf(pdf_id: str):
         raise 
         
     except Exception as e:
-        print(f"Error deleting PDF {pdf_id}")  # This will log the error with full traceback
+        print(f"Error deleting PDF {pdf_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting PDF: {str(e)}"
