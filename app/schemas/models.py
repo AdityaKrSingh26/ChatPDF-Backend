@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
+# Pydantic models for request and response payloads
 class PDFMetadata(BaseModel):
     id: str
     filename: str

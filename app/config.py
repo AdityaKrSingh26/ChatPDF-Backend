@@ -14,8 +14,7 @@ class Settings(BaseSettings):
     # Gemini Settings
     GEMINI_API_KEY: str
 
-    # OpenAI API Key (add this if you need it)
-    # not required
+    # OpenAI API Key (not required)
     OPENAI_API_KEY: str
 
     class Config:

@@ -16,21 +16,24 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Check if the file is a PDF
         if not file.filename.endswith(".pdf"):
             print(f"Error: File {file.filename} is not a PDF.")
-            raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
-        
-        print(f"Starting upload for file: {file.filename}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Only PDF files are allowed."
+            )
 
         # Step 1: Upload PDF file to Cloudinary
         try:
-            print("Uploading file to Cloudinary...")
+            # Uploading file to Cloudinary...
             upload_result = cloudinary.uploader.upload(
                 file.file,
                 resource_type="raw"
             )
-            print(f"File uploaded successfully. Cloudinary URL: {upload_result['secure_url']}")
         except Exception as upload_error:
             print(f"Cloudinary upload failed: {upload_error}")
-            raise HTTPException(status_code=500, detail="Error uploading file to Cloudinary.")
+            raise HTTPException(
+                status_code=500, 
+                detail="Error uploading file to Cloudinary."
+            )
 
         # Step 2: Prepare metadata from Cloudinary upload result
         cloudinary_data = {
@@ -41,17 +44,19 @@ async def upload_pdf(file: UploadFile = File(...)):
             'created_at': datetime.strptime(upload_result['created_at'], "%Y-%m-%dT%H:%M:%SZ"),
             'format': upload_result.get('format', file.filename.split('.')[-1])
         }
-        
-        print(f"Prepared metadata: {cloudinary_data}")
 
         # Step 3: Store the PDF metadata in MongoDB
         try:
-            print(f"Saving metadata for {file.filename} into MongoDB...")
-            pdf_id = await MongoDB.save_pdf_metadata(file.filename, cloudinary_data)
-            print(f"PDF metadata saved successfully with ID: {pdf_id}")
+            pdf_id = await MongoDB.save_pdf_metadata(
+                file.filename, 
+                cloudinary_data
+            )
         except Exception as db_error:
             print(f"Error saving metadata to MongoDB: {db_error}")
-            raise HTTPException(status_code=500, detail=str(db_error))
+            raise HTTPException(
+                status_code=500, 
+                detail=str(db_error)
+            )
 
         # Step 4: Prepare response
         response = {
@@ -88,12 +93,14 @@ async def list_pdfs(skip: int = 0, limit: int = 10):
     """
     
     try:
+        # Retrieve PDFs from MongoDB with pagination and sort by created_at
         pdfs = await MongoDB.db.pdfs.find() \
             .sort("created_at", -1) \
             .skip(skip) \
             .limit(limit) \
             .to_list(length=None)
-            
+        
+        # Prepare and return response
         return [
             {**pdf, 'id': str(pdf.pop('_id'))}
             for pdf in pdfs
@@ -107,39 +114,48 @@ async def list_pdfs(skip: int = 0, limit: int = 10):
         )
 
 
-
 @router.delete("/pdfs/{pdf_id}")
 async def delete_pdf(pdf_id: str):
     """
     Delete PDF from both Cloudinary and MongoDB
     """
-    
     try:
-        # Validate ObjectId format
+        # Step 1: Validate ObjectId format
         if not ObjectId.is_valid(pdf_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid PDF ID format"
             )
+        else:
+            print(f"Deleting PDF {pdf_id}")
 
-        # Get PDF metadata from MongoDB
+        # Step 2: Get PDF metadata from MongoDB
         pdf = await MongoDB.db.pdfs.find_one({"_id": ObjectId(pdf_id)})
         if not pdf:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="PDF not found"
             )
+        else:
+            print(f"PDF found: {pdf}")
             
-        # Delete from Cloudinary
+        # Step 3: Delete from Cloudinary
         cloudinary_result = cloudinary.uploader.destroy(pdf['cloudinary_public_id'])
-        if cloudinary_result.get('result') != 'ok':
+        if cloudinary_result.get('result') == 'not found':
+            print(f"PDF already deleted from Cloudinary or not found: {cloudinary_result}")
+            raise Exception("Failed to delete from Cloudinary")
+        elif cloudinary_result.get('result') != 'ok':
             print(f"Failed to delete from Cloudinary: {cloudinary_result}")
             raise Exception("Failed to delete from Cloudinary")
-            
-        # Delete from MongoDB
+        else:
+            print(f"Deleted from Cloudinary: {cloudinary_result}")
+
+        # Step 4: Delete from MongoDB
         result = await MongoDB.db.pdfs.delete_one({"_id": ObjectId(pdf_id)})
         if result.deleted_count == 0:
             raise Exception("Failed to delete from MongoDB")
+        else:
+            print(f"Deleted from MongoDB: {result.raw_result}")
         
         return {
             "status": "success",
@@ -148,10 +164,10 @@ async def delete_pdf(pdf_id: str):
         }
         
     except HTTPException:
-        raise
+        raise 
         
     except Exception as e:
-        print(f"Error deleting PDF {pdf_id}: {str(e)}", exc_info=True)
+        print(f"Error deleting PDF {pdf_id}")  # This will log the error with full traceback
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting PDF: {str(e)}"
