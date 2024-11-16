@@ -1,143 +1,244 @@
-## API Documentation
+# API Documentation
 
-### 1. Upload PDF
-Uploads a PDF file to Cloudinary and saves its metadata in MongoDB.
+## 1. Root Endpoint
 
-- **URL:** `/upload_pdf`
-- **Method:** `POST`
-- **Content-Type:** `multipart/form-data`
-- **Request Body:**
-  - `file` (required, type: `UploadFile`): PDF file to be uploaded.
+### GET `/`
 
-**Example Request:**
-```bash
-curl -X POST "http://localhost:8000/upload_pdf" -F "file=@/path/to/file.pdf"
-```
+**Description**:  
+Root endpoint to check the status of the service.
 
-**Response:**
-- **Status:** `200 OK`
-- **Content-Type:** `application/json`
-- **Response JSON:**
-  ```json
-  {
-    "status": "success",
-    "message": "PDF 'sample.pdf' uploaded and processed successfully.",
-    "data": {
-      "pdf_id": "64f60c1b8f8e4b48d8f8e4b4",
-      "pdf_metadata": {
-        "id": "64f60c1b8f8e4b48d8f8e4b4",
-        "filename": "sample.pdf",
-        "cloudinary_url": "https://res.cloudinary.com/.../sample.pdf",
-        "cloudinary_public_id": "sample_id",
-        "file_size": 123456,
-        "created_at": "2024-10-15T12:00:00Z",
-        "format": "pdf"
-      }
-    }
-  }
-  ```
+### Responses:
+- **200 OK**  
+  Returns the root status.
 
 ---
 
-### 2. Query PDF
-Queries the content of a PDF by extracting relevant text chunks and returning a generated response based on a query.
+## 2. Upload PDF
 
-- **URL:** `/query`
-- **Method:** `POST`
-- **Content-Type:** `application/json`
-- **Request Body:**
-  - `pdf_id` (type: `str`, required): The MongoDB ID of the PDF document.
-  - `query` (type: `str`, required): The query text.
+### POST `/api/v1/upload_pdf`
 
-**Example Request:**
+**Description**:  
+Uploads a PDF to the server and processes it.
+
+### Parameters:
+- **None**  
+
+### Request Body:
+- **Content-Type**: `multipart/form-data`
+- **File**: 
+  - **Field Name**: `file`
+  - **Type**: `string($binary)`
+  - **Example File**: `Abhisahar Article - Open Src.pdf`
+
+### Example cURL Request:
+```bash
+curl -X 'POST' \
+  'http://127.0.0.1:8000/api/v1/upload_pdf' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@Abhisahar Article - Open Src.pdf;type=application/pdf'
+```
+
+### Responses:
+
+#### 200 OK
+- **Description**: PDF uploaded and processed successfully.
+- **Response Body**:
 ```json
 {
-  "pdf_id": "64f60c1b8f8e4b48d8f8e4b4",
-  "query": "What is the summary of this document?"
+  "status": "success",
+  "message": "PDF 'Abhisahar Article - Open Src.pdf' uploaded and processed successfully.",
+  "data": {
+    "pdf_id": "67385818c013d1176861687e",
+    "pdf_metadata": {
+      "id": "67385818c013d1176861687e",
+      "filename": "Abhisahar Article - Open Src.pdf",
+      "cloudinary_url": "https://res.cloudinary.com/dnu3aojdm/raw/upload/v1731745816/mxvdhu1nxgxtynjdecbw",
+      "cloudinary_public_id": "mxvdhu1nxgxtynjdecbw",
+      "file_size": 64475,
+      "created_at": "2024-11-16T08:30:16",
+      "format": "pdf"
+    }
+  }
 }
 ```
 
-**Response:**
-- **Status:** `200 OK`
-- **Content-Type:** `application/json`
-- **Response JSON:**
-  ```json
-  {
-    "id": "64f61d2b8f8e4b49d8f8e4c7",
-    "pdf_id": "64f60c1b8f8e4b48d8f8e4b4",
-    "query": "What is the summary of this document?",
-    "response": "This document discusses...",
-    "created_at": "2024-10-15T12:05:00Z"
-  }
-  ```
-
----
-
-### 3. Get Query History
-Retrieves the history of previous queries for a specific PDF.
-
-- **URL:** `/history/{pdf_id}`
-- **Method:** `GET`
-- **Content-Type:** `application/json`
-- **Path Parameter:**
-  - `pdf_id` (type: `str`, required): The MongoDB ID of the PDF document.
-- **Query Parameters:**
-  - `skip` (type: `int`, optional, default: `0`): Number of records to skip for pagination.
-  - `limit` (type: `int`, optional, default: `10`): Max number of records to return.
-
-**Example Request:**
-```bash
-curl -X GET "http://localhost:8000/history/64f60c1b8f8e4b48d8f8e4b4?skip=0&limit=10"
-```
-
-**Response:**
-- **Status:** `200 OK`
-- **Content-Type:** `application/json`
-- **Response JSON:**
-  ```json
-  [
+#### 422 Unprocessable Entity
+- **Description**: Validation error, typically due to missing or invalid parameters.
+- **Response Body**:
+```json
+{
+  "detail": [
     {
-      "id": "64f61d2b8f8e4b49d8f8e4c7",
-      "pdf_id": "64f60c1b8f8e4b48d8f8e4b4",
-      "query": "What is the summary of this document?",
-      "response": "This document discusses...",
-      "created_at": "2024-10-15T12:05:00Z"
-    },
-    {
-      "id": "64f61d2c8f8e4b49d8f8e4c8",
-      "pdf_id": "64f60c1b8f8e4b48d8f8e4b4",
-      "query": "List the main points of the document.",
-      "response": "The main points are...",
-      "created_at": "2024-10-15T12:10:00Z"
+      "loc": ["body", "file"],
+      "msg": "Field required",
+      "type": "value_error.missing"
     }
   ]
-  ```
-
----
-
-### 4. Delete PDF
-Deletes a PDF from both Cloudinary and MongoDB.
-
-- **URL:** `/pdfs/{pdf_id}`
-- **Method:** `DELETE`
-- **Path Parameter:**
-  - `pdf_id` (type: `str`, required): The MongoDB ID of the PDF document to delete.
-
-**Example Request:**
-```bash
-curl -X DELETE "http://localhost:8000/pdfs/64f60c1b8f8e4b48d8f8e4b4"
+}
 ```
 
-**Response:**
-- **Status:** `200 OK`
-- **Content-Type:** `application/json`
-- **Response JSON:**
-  ```json
+---
+
+## 3. List Uploaded PDFs
+
+### GET `/api/v1/pdfs`
+
+**Description**:  
+Retrieves a list of uploaded PDFs with pagination support.
+
+### Parameters:
+- **skip**: `integer` (query) - Offset for pagination (default: 0).
+- **limit**: `integer` (query) - Number of records to fetch (default: 10).
+
+### Example cURL Request:
+```bash
+curl -X 'GET' \
+  'http://127.0.0.1:8000/api/v1/pdfs?skip=0&limit=10' \
+  -H 'accept: application/json'
+```
+
+### Responses:
+
+#### 200 OK
+- **Description**: Successfully retrieves the list of PDFs.
+- **Response Body**:
+```json
+[
   {
-    "status": "success",
-    "message": "PDF deleted successfully",
-    "pdf_id": "64f60c1b8f8e4b48d8f8e4b4"
-  }
-  ```
+    "id": "67385818c013d1176861687e",
+    "filename": "Abhisahar Article - Open Src.pdf",
+    "cloudinary_url": "https://res.cloudinary.com/dnu3aojdm/raw/upload/v1731745816/mxvdhu1nxgxtynjdecbw",
+    "cloudinary_public_id": "mxvdhu1nxgxtynjdecbw",
+    "file_size": 64475,
+    "created_at": "2024-11-16T08:30:16",
+    "format": "pdf"
+  },
+  ...
+]
+```
+
+#### 422 Unprocessable Entity
+- **Description**: Validation error for request parameters.
+- **Response Body**:
+```json
+{
+  "detail": [
+    {
+      "loc": ["query", "limit"],
+      "msg": "Value is too large",
+      "type": "value_error.max_size"
+    }
+  ]
+}
+```
 
 ---
+
+## 4. Delete PDF
+
+### DELETE `/api/v1/pdfs/{pdf_id}`
+
+**Description**:  
+Deletes a PDF from both Cloudinary and the database.
+
+### Parameters:
+- **pdf_id**: `string` (path) - The unique identifier of the PDF to be deleted.
+
+### Example cURL Request:
+```bash
+curl -X 'DELETE' \
+  'http://127.0.0.1:8000/api/v1/pdfs/673793c2fcf059dc08dcc4d2' \
+  -H 'accept: application/json'
+```
+
+### Responses:
+
+#### 200 OK
+- **Description**: Successfully deleted the PDF.
+- **Response Body**:
+```json
+{
+  "status": "success",
+  "message": "PDF deleted successfully",
+  "pdf_id": "673793c2fcf059dc08dcc4d2"
+}
+```
+
+#### 422 Unprocessable Entity
+- **Description**: Validation error, typically due to an invalid `pdf_id`.
+- **Response Body**:
+```json
+{
+  "detail": [
+    {
+      "loc": ["path", "pdf_id"],
+      "msg": "Invalid PDF ID",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+---
+
+## 5. Query PDF
+
+### POST `/api/v1/query`
+
+**Description**:  
+Queries a PDF with a specific question.
+
+### Parameters:
+- **pdf_id**: `string` (body) - The ID of the PDF to query.
+- **query**: `string` (body) - The question to ask the PDF.
+
+### Request Body:
+```json
+{
+  "pdf_id": "67385818c013d1176861687e",
+  "query": "what is the topic?"
+}
+```
+
+### Example cURL Request:
+```bash
+curl -X 'POST' \
+  'http://127.0.0.1:8000/api/v1/query' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "pdf_id": "67385818c013d1176861687e",
+    "query": "what is the topic?"
+  }'
+```
+
+### Responses:
+
+#### 200 OK
+- **Description**: Successfully queries the PDF.
+- **Response Body**:
+```json
+{
+  "id": "6738587ac013d1176861687f",
+  "pdf_id": "67385818c013d1176861687e",
+  "query": "what is the topic?",
+  "response": "Open source software development",
+  "created_at": "2024-11-16T08:31:54.333289"
+}
+```
+
+#### 422 Unprocessable Entity
+- **Description**: Validation error for request parameters.
+- **Response Body**:
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "query"],
+      "msg": "Query is required",
+      "type": "value_error.missing"
+    }
+  ]
+}
+```
