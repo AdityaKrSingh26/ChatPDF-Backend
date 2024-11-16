@@ -1,8 +1,8 @@
+import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from ..config import settings
 import cloudinary
 import cloudinary.uploader
-import logging
 
 class MongoDB:
     client = None
@@ -33,19 +33,7 @@ class MongoDB:
             logging.error(f"Error connecting to MongoDB or Cloudinary: {str(e)}")
             raise Exception("Database or Cloudinary connection failed")
 
-    @classmethod
-    async def close_db(cls):
-        if cls.client:
-            try:
-                # Close MongoDB connection
-                await cls.client.close()
-                print("MongoDB connection closed successfully")
-            except Exception as e:
-                print(f"Error closing MongoDB connection: {e}")
-                logging.error(f"Error closing MongoDB connection: {str(e)}")
-        else:
-            print("MongoDB client is not initialized. No connection to close.")
-            
+
     @classmethod
     async def save_pdf_metadata(cls, filename: str, cloudinary_data: dict):
         try:
