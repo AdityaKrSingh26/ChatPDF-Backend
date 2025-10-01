@@ -405,7 +405,7 @@ docs: update API documentation
 2. **Code**: Write clean, tested code following existing patterns
 3. **Test**: Run locally and verify at `http://localhost:8000/docs`
 4. **Commit**: `git commit -m "feat: your feature"`
-5. **PR**: Submit with description and checklist
+5. **PR**: Submit with description and checklist and Raise your PR on DEV branch
 
 ### Pull Request Checklist
 
