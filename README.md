@@ -48,6 +48,12 @@ A FastAPI-based backend service that allows users to upload PDF documents and qu
    pip install -r requirements.txt
    ```
 
+   On Windows, `python-magic` may require libmagic. If you encounter installation/runtime issues, install the Windows bundle:
+   ```bash
+   pip install python-magic-bin==0.4.14
+   ```
+   Keep `python-magic` for Linux/macOS; `python-magic-bin` is only needed locally on Windows.
+
 3. **Environment Setup**
    
    Create a `.env` file in the root directory:

@@ -7,6 +7,12 @@ from ...schemas.models import PDFMetadata
 import logging
 from datetime import datetime
 from bson import ObjectId
+import io
+
+try:
+    import magic  # python-magic for MIME type detection
+except Exception:
+    magic = None
 
 router = APIRouter()
 
@@ -19,6 +25,31 @@ async def upload_pdf(file: UploadFile = File(...)):
             raise HTTPException(
                 status_code=400, 
                 detail="Only PDF files are allowed."
+            )
+
+        # Validate actual content type using python-magic or PDF header
+        # Read a small chunk from the beginning to detect type, then reset pointer
+        head = await file.read(4096)
+        # Reset stream position so downstream consumers read from start
+        file.file.seek(0)
+
+        is_pdf_by_magic = False
+        detected_mime = None
+        if magic is not None:
+            try:
+                ms = magic.Magic(mime=True)
+                detected_mime = ms.from_buffer(head)
+                is_pdf_by_magic = (detected_mime == "application/pdf")
+            except Exception as detect_err:
+                logging.warning(f"python-magic detection failed: {detect_err}")
+
+        # Fallback: check PDF header signature %PDF-
+        is_pdf_by_header = head.startswith(b"%PDF-")
+
+        if not (is_pdf_by_magic or is_pdf_by_header):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Uploaded file content is not a valid PDF (detected: {detected_mime or 'unknown'})."
             )
 
         # Step 1: Upload PDF file to Cloudinary
