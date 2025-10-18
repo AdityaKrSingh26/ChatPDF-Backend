@@ -1,5 +1,6 @@
 # app/config.py
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     # MongoDB Settings
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
 
     # OpenAI API Key (not required)
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: Optional[str] = None
 
     class Config:
         env_file = ".env"
