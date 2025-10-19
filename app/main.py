@@ -5,6 +5,11 @@ from .db.mongodb import MongoDB
 import cloudinary
 from .config import settings
 from .api.endpoints import pdf, query  # Add query import
+from app.middleware.logging import setup_logging, LoggingMiddleware
+import logging
+
+# Initialize logging before creating app
+setup_logging(logging.INFO)
 
 app = FastAPI(title="PDF Query System")
 
@@ -16,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add middleware after app creation (before routes)
+app.add_middleware(LoggingMiddleware)
 
 # Register routes
 @app.get("/")
