@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # OpenAI API Key (not required)
     OPENAI_API_KEY: Optional[str] = None
+    
+    # Max upload file size in bytes (50 MB)
+    MAX_FILE_SIZE: int = 50 * 1024 * 1024
 
     class Config:
         env_file = ".env"
