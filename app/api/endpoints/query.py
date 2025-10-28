@@ -24,7 +24,7 @@ async def query_pdf(request: QueryRequest):
     """
     Process PDF query with minimal error handling and graceful degradation
     """
-    logger.info(f"Starting PDF query processing for PDF ID: {request.pdf_id}")
+    logger.info(f"Query start for PDF: {request.pdf_id}")
     
     try:
         # Validate PDF ID format
@@ -54,7 +54,7 @@ async def query_pdf(request: QueryRequest):
         
         for attempt in range(max_download_retries):
             try:
-                logger.info(f"Downloading PDF from Cloudinary (attempt {attempt + 1}/{max_download_retries})")
+                logger.info(f"Downloading (attempt {attempt + 1}/{max_download_retries})")
                 pdf_content_response = requests.get(
                     pdf['cloudinary_url'], 
                     stream=True,
@@ -63,7 +63,7 @@ async def query_pdf(request: QueryRequest):
                 
                 if pdf_content_response.status_code == 200:
                     pdf_content = pdf_content_response.content
-                    logger.info("PDF downloaded successfully")
+                    logger.info("Downloaded")
                     break
                 else:
                     logger.warning(f"Download failed with status code: {pdf_content_response.status_code}")
@@ -102,11 +102,11 @@ async def query_pdf(request: QueryRequest):
 
         # Process PDF with enhanced error handling
         try:
-            logger.info("Starting PDF text extraction")
+            logger.info("Extracting text")
             pdf_text, processing_info = await pdf_processor.process_pdf_with_fallback(
                 pdf_content, pdf.get('filename')
             )
-            logger.info(f"PDF processing completed: {processing_info}")
+            logger.info("Text extracted")
             
         except PasswordProtectedPDFError as e:
             logger.error(f"Password protected PDF: {str(e)}")
@@ -135,9 +135,9 @@ async def query_pdf(request: QueryRequest):
             )
 
         # Create chunks from extracted text
-        logger.info("Creating text chunks")
+        logger.info("Chunking text")
         chunks = pdf_processor.create_chunks(pdf_text)
-        logger.info(f"Created {len(chunks)} chunks")
+        logger.info(f"Chunks: {len(chunks)}")
 
         if not chunks:
             logger.warning("No chunks created from PDF text")
@@ -147,13 +147,13 @@ async def query_pdf(request: QueryRequest):
             )
 
         # Find relevant chunks
-        logger.info("Finding relevant chunks")
+        logger.info("Ranking chunks")
         try:
             relevant_chunks = await pdf_processor.find_relevant_chunks(
                 request.query,
                 chunks
             )
-            logger.info(f"Found {len(relevant_chunks)} relevant chunks")
+            logger.info(f"Top chunks: {len(relevant_chunks)}")
         except Exception as e:
             logger.error(f"Error finding relevant chunks: {str(e)}")
             raise HTTPException(
@@ -162,13 +162,13 @@ async def query_pdf(request: QueryRequest):
             )
 
         # Generate response
-        logger.info("Generating response")
+        logger.info("Generating answer")
         try:
             response_text = await pdf_processor.generate_response(
                 request.query,
                 relevant_chunks
             )
-            logger.info("Response generated successfully")
+            logger.info("Answer generated")
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
             raise HTTPException(
@@ -181,7 +181,7 @@ async def query_pdf(request: QueryRequest):
             response_text += f"\n\nNote: Only {processing_info['readable_pages']}/{processing_info['total_pages']} pages were readable in this PDF."
 
         # Save query and response to MongoDB
-        logger.info("Saving query and response to database")
+        logger.info("Saving result")
         try:
             query_doc = {
                 "pdf_id": request.pdf_id,
@@ -191,7 +191,7 @@ async def query_pdf(request: QueryRequest):
                 "processing_info": processing_info
             }
             result = await MongoDB.db.queries.insert_one(query_doc)
-            logger.info(f"Query saved with ID: {result.inserted_id}")
+            logger.info(f"Saved ID: {result.inserted_id}")
         except Exception as e:
             logger.error(f"Error saving query: {str(e)}")
             # Don't fail the request if saving fails, just log it

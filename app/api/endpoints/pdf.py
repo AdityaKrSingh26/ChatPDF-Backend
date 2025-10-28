@@ -23,8 +23,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     Upload and minimally validate PDF file, then store metadata
     """
-    logger.info(f"Starting PDF upload for file: {file.filename}")
-    
+    logger.info(f"Upload start: {file.filename}")
     try:
         # Basic filename validation
         if not file.filename or not file.filename.endswith(".pdf"):
@@ -38,7 +37,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         file_content = await file.read()
         file_size = len(file_content)
         
-        logger.info(f"File size: {file_size} bytes")
+        logger.info(f"Size: {file_size} bytes")
         
         # Minimal validations (keep endpoint simple)
         if file_size == 0 or file_size > 50 * 1024 * 1024:
@@ -75,12 +74,12 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         # Upload to Cloudinary with error handling
         try:
-            logger.info("Uploading file to Cloudinary")
+            logger.info("Uploading to Cloudinary")
             upload_result = cloudinary.uploader.upload(
                 file.file,
                 resource_type="raw"
             )
-            logger.info("File uploaded to Cloudinary successfully")
+            logger.info("Uploaded to Cloudinary")
         except Exception as upload_error:
             logger.error(f"Cloudinary upload failed: {upload_error}")
             raise HTTPException(
@@ -100,18 +99,18 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         # Store metadata in MongoDB
         try:
-            logger.info("Saving PDF metadata to database")
+            logger.info("Saving metadata")
             pdf_id = await MongoDB.save_pdf_metadata(
                 file.filename, 
                 cloudinary_data
             )
-            logger.info(f"PDF metadata saved with ID: {pdf_id}")
+            logger.info(f"Saved with ID: {pdf_id}")
         except Exception as db_error:
             logger.error(f"Database error: {db_error}")
             # Try to clean up Cloudinary upload
             try:
                 cloudinary.uploader.destroy(upload_result['public_id'])
-                logger.info("Cleaned up Cloudinary upload after database error")
+                logger.info("Cleaned up Cloudinary upload")
             except Exception as cleanup_error:
                 logger.error(f"Failed to cleanup Cloudinary upload: {cleanup_error}")
             
@@ -138,7 +137,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             }
         }
 
-        logger.info(f"PDF upload completed successfully for file: {file.filename}")
+        logger.info(f"Upload completed: {file.filename}")
         return response
 
     except HTTPException as http_error:
