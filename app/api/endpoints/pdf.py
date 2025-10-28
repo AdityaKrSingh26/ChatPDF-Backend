@@ -8,18 +8,7 @@ import logging
 from datetime import datetime
 from bson import ObjectId
 import io
-from ...utils.pdf_exceptions import (
-    PDFProcessingError,
-    CorruptedPDFError,
-    PasswordProtectedPDFError,
-    EmptyPDFError,
-    LargeFileError,
-    TooManyPagesError,
-    InvalidMimeTypeError,
-    ProcessingTimeoutError,
-    RetryExhaustedError
-)
-from ...utils.pdf_validator import PDFValidator
+import PyPDF2
 
 try:
     import magic  # python-magic for MIME type detection
@@ -32,7 +21,7 @@ router = APIRouter()
 @router.post("/upload_pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     """
-    Upload and validate PDF file with comprehensive error handling
+    Upload and minimally validate PDF file, then store metadata
     """
     logger.info(f"Starting PDF upload for file: {file.filename}")
     
@@ -51,50 +40,34 @@ async def upload_pdf(file: UploadFile = File(...)):
         
         logger.info(f"File size: {file_size} bytes")
         
-        # Initialize PDF validator
-        validator = PDFValidator(max_file_size=50 * 1024 * 1024, max_pages=1000)
-        
-        # Comprehensive PDF validation
+        # Minimal validations (keep endpoint simple)
+        if file_size == 0 or file_size > 50 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File size invalid or too large (max 50MB)"
+            )
+        if not file_content.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file type. Please upload a valid PDF."
+            )
+        # Light structural check
         try:
-            validation_result = validator.comprehensive_validation(
-                file_content, file_size, file.filename
-            )
-            logger.info(f"PDF validation passed: {validation_result}")
-        except LargeFileError as e:
-            logger.error(f"File too large: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File size exceeds limit. Maximum allowed: 50MB, received: {file_size} bytes"
-            )
-        except TooManyPagesError as e:
-            logger.error(f"Too many pages: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"PDF has too many pages. Maximum allowed: 1000 pages"
-            )
-        except PasswordProtectedPDFError as e:
-            logger.error(f"Password protected PDF: {str(e)}")
+            reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            if getattr(reader, "is_encrypted", False):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Password-protected PDFs are not supported."
+                )
+            if len(reader.pages) > 1000:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="PDF has too many pages (max 1000)."
+                )
+        except PyPDF2.errors.PdfReadError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password-protected PDFs are not supported. Please remove the password and try again."
-            )
-        except EmptyPDFError as e:
-            logger.error(f"Empty PDF: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The PDF file contains no readable text content. Please ensure the PDF has extractable text."
-            )
-        except CorruptedPDFError as e:
-            logger.error(f"Corrupted PDF: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The PDF file appears to be corrupted or malformed. Please try with a different file."
-            )
-        except InvalidMimeTypeError as e:
-            logger.error(f"Invalid MIME type: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid file type. Please ensure you're uploading a valid PDF file."
+                detail="The PDF appears to be corrupted or unreadable."
             )
 
         # Reset file pointer for Cloudinary upload
@@ -122,8 +95,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             'cloudinary_public_id': upload_result['public_id'],
             'file_size': upload_result['bytes'],
             'created_at': datetime.strptime(upload_result['created_at'], "%Y-%m-%dT%H:%M:%SZ"),
-            'format': upload_result.get('format', file.filename.split('.')[-1]),
-            'validation_info': validation_result
+            'format': upload_result.get('format', file.filename.split('.')[-1])
         }
 
         # Store metadata in MongoDB
@@ -161,8 +133,7 @@ async def upload_pdf(file: UploadFile = File(...)):
                     "cloudinary_public_id": cloudinary_data['cloudinary_public_id'],
                     "file_size": cloudinary_data['file_size'],
                     "created_at": cloudinary_data['created_at'],
-                    "format": cloudinary_data['format'],
-                    "validation_info": validation_result
+                    "format": cloudinary_data['format']
                 }
             }
         }

@@ -8,18 +8,27 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 from ..config import settings
-from .pdf_exceptions import (
-    PDFProcessingError, 
-    CorruptedPDFError, 
-    PasswordProtectedPDFError,
-    EmptyPDFError,
-    PartialReadError
-)
-from .pdf_validator import PDFValidator
-from .retry_handler import RetryHandler, retry_on_failure
-from .timeout_handler import TimeoutHandler, with_timeout
 
 logger = logging.getLogger(__name__)
+
+# Minimal custom exceptions (inlined to keep implementation small and self-contained)
+class PDFProcessingError(Exception):
+    pass
+
+class CorruptedPDFError(PDFProcessingError):
+    pass
+
+class PasswordProtectedPDFError(PDFProcessingError):
+    pass
+
+class EmptyPDFError(PDFProcessingError):
+    pass
+
+class PartialReadError(PDFProcessingError):
+    def __init__(self, readable_pages: int, total_pages: int):
+        super().__init__(f"Only {readable_pages}/{total_pages} pages readable")
+        self.readable_pages = readable_pages
+        self.total_pages = total_pages
 
 class PDFProcessor:
     def __init__(self, max_file_size: int = 50 * 1024 * 1024, max_pages: int = 1000):
@@ -30,14 +39,27 @@ class PDFProcessor:
         self.model = genai.GenerativeModel('gemini-pro')
         self.chunk_size = 1000
         self.chunk_overlap = 200
-        
-        # Initialize validators and handlers
-        self.validator = PDFValidator(max_file_size, max_pages)
-        self.retry_handler = RetryHandler(max_retries=3, base_delay=1.0)
-        self.timeout_handler = TimeoutHandler(timeout_seconds=300)
-        
-    @retry_on_failure(max_retries=3, base_delay=1.0)
-    @with_timeout(timeout_seconds=300)
+        self.max_file_size = max_file_size
+        self.max_pages = max_pages
+
+    def quick_validate(self, pdf_content: bytes, filename: str = None) -> None:
+        """Minimal validation: size, header, structure, encryption, page count."""
+        size = len(pdf_content)
+        if size == 0 or size > self.max_file_size:
+            raise PDFProcessingError("File size invalid or too large (limit 50MB)")
+        if not pdf_content.startswith(b"%PDF-"):
+            raise PDFProcessingError("Invalid file type. Expected a PDF")
+        try:
+            reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
+        except PyPDF2.errors.PdfReadError as e:
+            raise CorruptedPDFError(str(e))
+        except Exception as e:
+            raise CorruptedPDFError(str(e))
+        if getattr(reader, "is_encrypted", False):
+            raise PasswordProtectedPDFError("PDF is password protected")
+        if len(reader.pages) > self.max_pages:
+            raise PDFProcessingError("PDF has too many pages")
+
     async def extract_text_from_pdf(self, pdf_content: bytes, filename: str = None) -> Tuple[str, dict]:
         """
         Extract text content from PDF bytes with comprehensive error handling
@@ -48,12 +70,8 @@ class PDFProcessor:
         logger.info(f"Starting PDF text extraction for file: {filename}")
         
         try:
-            # Validate PDF before processing
-            file_size = len(pdf_content)
-            validation_result = self.validator.comprehensive_validation(
-                pdf_content, file_size, filename
-            )
-            logger.info(f"PDF validation passed: {validation_result}")
+            # Minimal validation
+            self.quick_validate(pdf_content, filename)
             
             pdf_file = io.BytesIO(pdf_content)
             reader = PyPDF2.PdfReader(pdf_file)
@@ -94,7 +112,6 @@ class PDFProcessor:
                 "total_pages": total_pages,
                 "readable_pages": readable_pages,
                 "text_length": len(text),
-                "validation_passed": True,
                 "partial_read": readable_pages < total_pages
             }
             
@@ -129,7 +146,6 @@ class PDFProcessor:
             logger.error(f"Error creating chunks: {str(e)}")
             raise PDFProcessingError(f"Error creating text chunks: {str(e)}")
 
-    @retry_on_failure(max_retries=2, base_delay=1.0)
     async def get_embeddings(self, text: str) -> List[float]:
         """Get embeddings using sentence-transformers"""
         logger.debug(f"Getting embeddings for text of length {len(text)}")
@@ -142,7 +158,6 @@ class PDFProcessor:
             logger.error(f"Error getting embeddings: {str(e)}")
             raise PDFProcessingError(f"Error getting embeddings: {str(e)}")
 
-    @retry_on_failure(max_retries=2, base_delay=1.0)
     async def find_relevant_chunks(self, query: str, chunks: List[str], top_k: int = 3) -> List[str]:
         """Find most relevant chunks for the query using cosine similarity"""
         logger.info(f"Finding relevant chunks for query: '{query[:50]}...' from {len(chunks)} chunks")
@@ -190,8 +205,6 @@ class PDFProcessor:
             logger.error(f"Error finding relevant chunks: {str(e)}")
             raise PDFProcessingError(f"Error finding relevant chunks: {str(e)}")
 
-    @retry_on_failure(max_retries=2, base_delay=2.0)
-    @with_timeout(timeout_seconds=60)
     async def generate_response(self, query: str, relevant_chunks: List[str]) -> str:
         """Generate response using Gemini Pro"""
         logger.info(f"Generating response for query: '{query[:50]}...' using {len(relevant_chunks)} chunks")

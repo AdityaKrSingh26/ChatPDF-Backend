@@ -9,14 +9,11 @@ from bson import ObjectId
 from cloudinary.exceptions import NotFound
 from typing import List
 import logging
-from ...utils.pdf_exceptions import (
-    PDFProcessingError,
+from ...utils.pdf_processor import (
     CorruptedPDFError,
     PasswordProtectedPDFError,
     EmptyPDFError,
     PartialReadError,
-    ProcessingTimeoutError,
-    RetryExhaustedError
 )
 
 logger = logging.getLogger(__name__)
@@ -25,7 +22,7 @@ router = APIRouter()
 @router.post("/query", response_model=QueryResponse)
 async def query_pdf(request: QueryRequest):
     """
-    Process PDF query with comprehensive error handling and graceful degradation
+    Process PDF query with minimal error handling and graceful degradation
     """
     logger.info(f"Starting PDF query processing for PDF ID: {request.pdf_id}")
     
@@ -129,18 +126,7 @@ async def query_pdf(request: QueryRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="The PDF file appears to be corrupted and cannot be processed. Please try uploading a different file."
             )
-        except ProcessingTimeoutError as e:
-            logger.error(f"Processing timeout: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_408_REQUEST_TIMEOUT,
-                detail="PDF processing timed out. The file may be too large or complex. Please try with a smaller file."
-            )
-        except RetryExhaustedError as e:
-            logger.error(f"Retry exhausted: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="PDF processing failed after multiple attempts. Please try again later."
-            )
+        
         except PartialReadError as e:
             logger.warning(f"Partial read: {str(e)}")
             # Continue with partial content but inform user
