@@ -24,7 +24,7 @@ async def query_pdf(request: QueryRequest):
     """
     Process PDF query with minimal error handling and graceful degradation
     """
-    logger.info(f"Query start for PDF: {request.pdf_id}")
+    logger.info(f"Query: {request.pdf_id}")
     
     try:
         # Validate PDF ID format

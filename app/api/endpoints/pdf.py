@@ -23,7 +23,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     Upload and minimally validate PDF file, then store metadata
     """
-    logger.info(f"Upload start: {file.filename}")
+    logger.info(f"Upload: {file.filename}")
     try:
         # Basic filename validation
         if not file.filename or not file.filename.endswith(".pdf"):
@@ -37,7 +37,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         file_content = await file.read()
         file_size = len(file_content)
         
-        logger.info(f"Size: {file_size} bytes")
+        logger.info(f"Size: {file_size}")
         
         # Minimal validations (keep endpoint simple)
         if file_size == 0 or file_size > 50 * 1024 * 1024:
