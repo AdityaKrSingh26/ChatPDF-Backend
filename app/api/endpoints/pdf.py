@@ -8,91 +8,121 @@ import logging
 from datetime import datetime
 from bson import ObjectId
 import io
+import PyPDF2
 
 try:
     import magic  # python-magic for MIME type detection
 except Exception:
     magic = None
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/upload_pdf")
 async def upload_pdf(file: UploadFile = File(...)):
+    """
+    Upload and minimally validate PDF file, then store metadata
+    """
+    logger.info(f"Upload: {file.filename}")
     try:
-        # Check if the file is a PDF
-        if not file.filename.endswith(".pdf"):
-            print(f"Error: File {file.filename} is not a PDF.")
+        # Basic filename validation
+        if not file.filename or not file.filename.endswith(".pdf"):
+            logger.warning(f"Invalid filename: {file.filename}")
             raise HTTPException(
                 status_code=400, 
-                detail="Only PDF files are allowed."
+                detail="Only PDF files are allowed. Please ensure your file has a .pdf extension."
             )
 
-        # Validate actual content type using python-magic or PDF header
-        # Read a small chunk from the beginning to detect type, then reset pointer
-        head = await file.read(4096)
-        # Reset stream position so downstream consumers read from start
-        file.file.seek(0)
-
-        is_pdf_by_magic = False
-        detected_mime = None
-        if magic is not None:
-            try:
-                ms = magic.Magic(mime=True)
-                detected_mime = ms.from_buffer(head)
-                is_pdf_by_magic = (detected_mime == "application/pdf")
-            except Exception as detect_err:
-                logging.warning(f"python-magic detection failed: {detect_err}")
-
-        # Fallback: check PDF header signature %PDF-
-        is_pdf_by_header = head.startswith(b"%PDF-")
-
-        if not (is_pdf_by_magic or is_pdf_by_header):
+        # Read file content for validation
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        logger.info(f"Size: {file_size}")
+        
+        # Minimal validations (keep endpoint simple)
+        if file_size == 0 or file_size > 50 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File size invalid or too large (max 50MB)"
+            )
+        if not file_content.startswith(b"%PDF-"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Uploaded file content is not a valid PDF (detected: {detected_mime or 'unknown'})."
+                detail="Invalid file type. Please upload a valid PDF."
+            )
+        # Light structural check
+        try:
+            reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            if getattr(reader, "is_encrypted", False):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Password-protected PDFs are not supported."
+                )
+            if len(reader.pages) > 1000:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="PDF has too many pages (max 1000)."
+                )
+        except PyPDF2.errors.PdfReadError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The PDF appears to be corrupted or unreadable."
             )
 
-        # Step 1: Upload PDF file to Cloudinary
+        # Reset file pointer for Cloudinary upload
+        file.file.seek(0)
+
+        # Upload to Cloudinary with error handling
         try:
-            # Uploading file to Cloudinary...
+            logger.info("Uploading to Cloudinary")
             upload_result = cloudinary.uploader.upload(
                 file.file,
                 resource_type="raw"
             )
+            logger.info("Uploaded to Cloudinary")
         except Exception as upload_error:
-            print(f"Cloudinary upload failed: {upload_error}")
+            logger.error(f"Cloudinary upload failed: {upload_error}")
             raise HTTPException(
                 status_code=500, 
-                detail="Error uploading file to Cloudinary."
+                detail="Error uploading file to cloud storage. Please try again later."
             )
 
-        # Step 2: Prepare metadata from Cloudinary upload result
+        # Prepare metadata
         cloudinary_data = {
             'filename': file.filename,
             'cloudinary_url': upload_result['secure_url'],
             'cloudinary_public_id': upload_result['public_id'],
-            'file_size': upload_result['bytes'],  # This is the correct field name
+            'file_size': upload_result['bytes'],
             'created_at': datetime.strptime(upload_result['created_at'], "%Y-%m-%dT%H:%M:%SZ"),
             'format': upload_result.get('format', file.filename.split('.')[-1])
         }
 
-        # Step 3: Store the PDF metadata in MongoDB
+        # Store metadata in MongoDB
         try:
+            logger.info("Saving metadata")
             pdf_id = await MongoDB.save_pdf_metadata(
                 file.filename, 
                 cloudinary_data
             )
+            logger.info(f"Saved with ID: {pdf_id}")
         except Exception as db_error:
-            print(f"Error saving metadata to MongoDB: {db_error}")
+            logger.error(f"Database error: {db_error}")
+            # Try to clean up Cloudinary upload
+            try:
+                cloudinary.uploader.destroy(upload_result['public_id'])
+                logger.info("Cleaned up Cloudinary upload")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup Cloudinary upload: {cleanup_error}")
+            
             raise HTTPException(
                 status_code=500, 
-                detail=str(db_error)
+                detail="Error saving file metadata. Please try again later."
             )
 
-        # Step 4: Prepare response
+        # Prepare response
         response = {
             "status": "success",
-            "message": f"PDF '{file.filename}' uploaded and processed successfully.",
+            "message": f"PDF '{file.filename}' uploaded and validated successfully.",
             "data": {
                 "pdf_id": pdf_id,
                 "pdf_metadata": {
@@ -107,13 +137,18 @@ async def upload_pdf(file: UploadFile = File(...)):
             }
         }
 
+        logger.info(f"Upload completed: {file.filename}")
         return response
 
     except HTTPException as http_error:
+        logger.error(f"HTTP error during PDF upload: {http_error.detail}")
         raise http_error
     except Exception as e:
-        print(f"Error in upload_pdf endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error during PDF upload: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail="An unexpected error occurred during file upload. Please try again later."
+        )
 
 
 
